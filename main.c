@@ -55,7 +55,7 @@ inline void initNode(node* n) {
     n->capacity = 0;
 }
 
-int readProblem(char* fileName, node** _nodes, arc** _arcs, long* _nodesNum, long* _arcsNum)
+int readProblem(char* fileName, node** _nodes, arc** _arcs, long* _nodeCount, long* _arcCount)
 {
     FILE* inFile = fopen(fileName, "r");
     if (inFile == NULL) {
@@ -66,11 +66,11 @@ int readProblem(char* fileName, node** _nodes, arc** _arcs, long* _nodesNum, lon
     // arrays
     node* nodes = NULL;
     arc* arcs = NULL;
-    long nodesNum = 0;
-    long arcsNum = 0;
+    long nodeCount = 0;
+    long arcCount = 0;
 
     long lineNum = 0;
-    long arcNum = 0;
+    long arcNum = 1;
 
     char buffer[512];
     while (fgets(buffer, sizeof buffer, inFile) != NULL) {
@@ -79,23 +79,26 @@ int readProblem(char* fileName, node** _nodes, arc** _arcs, long* _nodesNum, lon
             continue;
         } else if (buffer[0] == 'p') {
             // problem descriptor
-            if (nodesNum != 0 || arcsNum != 0) {
+            if (nodeCount != 0 || arcCount != 0) {
                 printf("Duplicate p descriptor on line %ld\n", lineNum);
                 return -1;
             }
 
-            sscanf(buffer, "p min %ld %ld\n", &nodesNum, &arcsNum);
+            sscanf(buffer, "p min %ld %ld\n", &nodeCount, &arcCount);
 
             // add source node and destination node
-            nodesNum += 2;
+            nodeCount += 2;
+            // skip 0 arc
+            arcCount += 1;
 
-            nodes = malloc(sizeof(node) * nodesNum);
-            for (long i = 0; i < nodesNum; i++) {
+            nodes = malloc(sizeof(node) * nodeCount);
+            for (long i = 0; i < nodeCount; i++) {
                 initNode(&nodes[i]);
             }
 
-            arcs = malloc(sizeof(arc) * arcsNum);
-            for (int i = 0; i < arcsNum; i++) {
+            // we store arcs form 1 index
+            arcs = malloc(sizeof(arc) * arcCount);
+            for (int i = 0; i < arcCount; i++) {
                 initArc(&arcs[i]);
             }
 
@@ -107,7 +110,7 @@ int readProblem(char* fileName, node** _nodes, arc** _arcs, long* _nodesNum, lon
 
             sscanf(buffer, "n %ld %ld", &id, &flow);
 
-            if (id >= nodesNum) {
+            if (id >= nodeCount) {
                 printf("Node id out of bounds on line %ld\n", lineNum);
                 return -1;
             }
@@ -125,7 +128,7 @@ int readProblem(char* fileName, node** _nodes, arc** _arcs, long* _nodesNum, lon
             long cost = 0;
 
             sscanf(buffer, "a %ld %ld %ld %ld %ld", &from, &to, &lowerBound, &upperBound, &cost);
-            if ((from > nodesNum - 2) || (to > nodesNum - 2) || arcNum > arcsNum) {
+            if ((from > nodeCount - 2) || (to > nodeCount - 2) || arcNum > arcCount) {
                 printf("Wrong arc input on line %ld\n", lineNum);
                 return -1;
             }
@@ -149,30 +152,30 @@ int readProblem(char* fileName, node** _nodes, arc** _arcs, long* _nodesNum, lon
 
     *_nodes = nodes;
     *_arcs = arcs;
-    *_nodesNum = nodesNum;
-    *_arcsNum = arcsNum;
+    *_nodeCount = nodeCount;
+    *_arcCount = arcCount;
 
     return 0;
 }
 
-int normalizeProblem(node** _nodes, arc** _arcs, long* _nodesNum, long* _arcsNum, long* _delta, long** _deltas)
+int normalizeProblem(node** _nodes, arc** _arcs, long* _nodeCount, long* _arcCount, long* _delta, long** _deltas)
 {
     // arrays
     node* nodes = *_nodes;
     arc* arcs = *_arcs;
-    long nodesNum = *_nodesNum;
-    long arcsNum = *_arcsNum;
+    long nodeCount = *_nodeCount;
+    long arcCount = *_arcCount;
     long delta;
     long* deltas = *_deltas;
 
     // 1) remove lower bounds
     delta = 0;
-    deltas = malloc(arcsNum * sizeof(long));
-    for (int i = 0; i < arcsNum; i++) {
+    deltas = malloc(arcCount * sizeof(long));
+    for (int i = 0; i < arcCount; i++) {
         deltas[i] = 0;
     }
 
-    for (int i = 0; i < arcsNum; i++) {
+    for (int i = 0; i < arcCount; i++) {
         if (arcs[i].lowerBound > 0) {
             nodes[arcs[i].from].capacity -= arcs[i].lowerBound;
             nodes[arcs[i].to].capacity += arcs[i].lowerBound;
@@ -187,7 +190,7 @@ int normalizeProblem(node** _nodes, arc** _arcs, long* _nodesNum, long* _arcsNum
 
     // calculate how much arcs we need to add
     long deltaArcs = 0;
-    for (int i = 1; i < nodesNum - 1; i++) {
+    for (int i = 1; i < nodeCount - 1; i++) {
         if (nodes[i].capacity > 0) {
             // source node
             deltaArcs++;
@@ -198,19 +201,19 @@ int normalizeProblem(node** _nodes, arc** _arcs, long* _nodesNum, long* _arcsNum
             // dest node
             deltaArcs++;
             nodes[i].outArcsCount++;
-            nodes[nodesNum - 1].inArcsCount++;
+            nodes[nodeCount - 1].inArcsCount++;
         }
     }
     // resize arcs array
-    arcs = (arc*)realloc(arcs, (arcsNum+deltaArcs)*sizeof(arc));
-    for (int i = arcsNum; i < arcsNum+deltaArcs; i++) {
+    arcs = (arc*)realloc(arcs, (arcCount+deltaArcs)*sizeof(arc));
+    for (int i = arcCount; i < arcCount+deltaArcs; i++) {
         //arcs[i] = malloc(sizeof(arc));
         initArc(&arcs[i]);
     }
     // process new arcs
-    long arcNum = arcsNum;
+    long arcNum = arcCount;
     // skip 0 and last node - they are virtual source and dest
-    for (int i = 1; i < nodesNum - 1; i++) {
+    for (int i = 1; i < nodeCount - 1; i++) {
         if (nodes[i].capacity > 0) {
             // source node
             arcs[arcNum].from = 0;
@@ -228,30 +231,30 @@ int normalizeProblem(node** _nodes, arc** _arcs, long* _nodesNum, long* _arcsNum
         if (nodes[i].capacity < 0) {
             // dest node
             arcs[arcNum].from = i;
-            arcs[arcNum].to = nodesNum - 1;
+            arcs[arcNum].to = nodeCount - 1;
             arcs[arcNum].lowerBound = 0;
             arcs[arcNum].upperBound = labs(nodes[i].capacity);
             arcs[arcNum].cost = 0;
 
-            nodes[nodesNum  - 1].capacity += nodes[i].capacity;
+            nodes[nodeCount  - 1].capacity += nodes[i].capacity;
             nodes[i].capacity = 0;
 
             arcNum++;
             continue;
         }
     }
-    arcsNum += deltaArcs;
+    arcCount += deltaArcs;
 
     // 3) store arc indexes in nodes
-    long* nodesOutArc = malloc(sizeof(long) * nodesNum);
-    long* nodesInArc = malloc(sizeof(long) * nodesNum);
-    for (int i = 0; i < nodesNum; i++) {
+    long* nodesOutArc = malloc(sizeof(long) * nodeCount);
+    long* nodesInArc = malloc(sizeof(long) * nodeCount);
+    for (int i = 0; i < nodeCount; i++) {
         nodes[i].outArcs = malloc(sizeof(long) * nodes[i].outArcsCount);
         nodesOutArc[i] = 0;
         nodes[i].inArcs = malloc(sizeof(long) * nodes[i].inArcsCount);
         nodesInArc[i] = 0;
     }
-    for (int i = 0; i < arcsNum; i++) {
+    for (int i = 1; i < arcCount; i++) {
         nodes[arcs[i].from].outArcs[nodesOutArc[arcs[i].from]] = i;
         nodesOutArc[arcs[i].from]++;
         nodes[arcs[i].to].inArcs[nodesInArc[arcs[i].to]] = i;
@@ -260,8 +263,8 @@ int normalizeProblem(node** _nodes, arc** _arcs, long* _nodesNum, long* _arcsNum
 
     *_nodes = nodes;
     *_arcs = arcs;
-    *_nodesNum = nodesNum;
-    *_arcsNum = arcsNum;
+    *_nodeCount = nodeCount;
+    *_arcCount = arcCount;
     *_delta = delta;
     *_deltas = deltas;
 
@@ -273,12 +276,12 @@ int buildResidualArcs(node* nodes, arc* arcs, arc** _residualArcs, long nodeCoun
     // arrays
     arc* residualArcs = malloc(arcCount * sizeof(arc));
 
-    for (int i = 0; i < arcCount; i++) {
+    for (int i = 1; i < arcCount; i++) {
         initArc(&residualArcs[i]);
         residualArcs[i].from = arcs[i].to;
         residualArcs[i].to = arcs[i].from;
         residualArcs[i].lowerBound = 0;
-        residualArcs[i].upperBound = 0;
+        residualArcs[i].upperBound = -arcs[i].flow;
         residualArcs[i].cost = -arcs[i].cost;
     }
 
@@ -286,6 +289,7 @@ int buildResidualArcs(node* nodes, arc* arcs, arc** _residualArcs, long nodeCoun
     return 0;
 }
 
+// solution with min cost
 int solveProblem(node* nodes, arc* arcs, long nodeCount, long arcCount)
 {
     arc* residualArcs = NULL;
@@ -302,7 +306,6 @@ int solveProblem(node* nodes, arc* arcs, long nodeCount, long arcCount)
         // find shortest path from first to last node (considuring only costs of arcs)
 
         // shortest path. We store not previous node but arc wich leads to previous node. Negative values means residual arcs
-        // 0 does not have e negative velue, so we just simply +1 to arc indexes
         long* path = malloc(nodeCount * sizeof(long));
         for (int i = 0; i < nodeCount; i++) {
             path[i] = -1;
@@ -322,7 +325,7 @@ int solveProblem(node* nodes, arc* arcs, long nodeCount, long arcCount)
         bool relaxed = false;
         for (int i = 0; i < nodeCount-1; i++) {
             relaxed = false;
-            for (int j = 0; j < arcCount; j++) {
+            for (int j = 1; j < arcCount; j++) {
                 if (length[arcs[j].from] == LONG_MAX) {
                     // skip
                     continue;
@@ -332,7 +335,7 @@ int solveProblem(node* nodes, arc* arcs, long nodeCount, long arcCount)
                     if (length[arcs[j].from] + arcs[j].cost < length[arcs[j].to] ) {
                         // shortest path relax
                         length[arcs[j].to] = length[arcs[j].from] + arcs[j].cost;
-                        path[arcs[j].to] = j+1;
+                        path[arcs[j].to] = j;
                         minResidualCap[arcs[j].to] = lmin(minResidualCap[arcs[j].from], arcs[j].upperBound);
                         relaxed = true;
                     }
@@ -342,7 +345,7 @@ int solveProblem(node* nodes, arc* arcs, long nodeCount, long arcCount)
                     if (length[residualArcs[j].from] + residualArcs[j].cost < length[residualArcs[j].to] ) {
                         // shortest path relax
                         length[residualArcs[j].to] = length[residualArcs[j].from] + residualArcs[j].cost;
-                        path[residualArcs[j].to] = -(j+1);
+                        path[residualArcs[j].to] = -j;
                         minResidualCap[residualArcs[j].to] = lmin(minResidualCap[residualArcs[j].from], residualArcs[j].upperBound);
                         relaxed = true;
                     }
@@ -367,7 +370,6 @@ int solveProblem(node* nodes, arc* arcs, long nodeCount, long arcCount)
             long arcIdx = path[idx];
             if (arcIdx > 0) {
                 // normal flow. Increase normal flow
-                arcIdx--;
                 arcs[arcIdx].flow += minResidualCap[nodeCount-1];
                 arcs[arcIdx].upperBound -= minResidualCap[nodeCount-1];
                 residualArcs[arcIdx].flow -= minResidualCap[nodeCount-1];
@@ -377,7 +379,6 @@ int solveProblem(node* nodes, arc* arcs, long nodeCount, long arcCount)
             if (arcIdx < 0) {
                 // reverse flow. Decrease normal flow to save cost
                 arcIdx*=-1;
-                arcIdx--;
                 arcs[arcIdx].flow -= minResidualCap[nodeCount-1];
                 arcs[arcIdx].upperBound += minResidualCap[nodeCount-1];
                 residualArcs[arcIdx].flow += minResidualCap[nodeCount-1];
@@ -391,9 +392,241 @@ int solveProblem(node* nodes, arc* arcs, long nodeCount, long arcCount)
     return 0;
 }
 
+// make a deep search from node 0 to node N saving maximum possilbe flow
+// as soon as node N is reached - turn to node 0 incrimenting flow by max value
+// repeat untill node 0 has non-filled arcs
+void flowDeepthSearch(node* nodes, arc* arcs, arc* residualArcs, long nodeCount, long arcCount, long nodeIdx, long* path, long pathLength, long* length)
+{
+    if (pathLength > nodeCount) {
+        return;
+    }
+
+    if (nodeIdx == nodeCount-1) {
+        // we have reached end. Find possible max flow and apply it
+        long flow = LONG_MAX;
+        for (int i = 0; i < pathLength; i++) {
+            long arcIdx = path[i];
+            if (arcIdx > 0) {
+                flow = lmin(flow, arcs[arcIdx].upperBound);
+            }
+            if (arcIdx < 0) {
+                arcIdx *= -1;
+                flow = lmin(flow, residualArcs[arcIdx].upperBound);
+            }
+        }
+
+        // apply flow
+        for (int i = 0; i < pathLength; i++) {
+            long arcIdx = path[i];
+
+            if (arcIdx > 0) {
+                // normal flow. Increase normal flow
+                arcs[arcIdx].flow += flow;
+                arcs[arcIdx].upperBound -= flow;
+                residualArcs[arcIdx].flow -= flow;
+                residualArcs[arcIdx].upperBound += flow;
+            }
+            if (arcIdx < 0) {
+                arcIdx *= -1;
+                // reverse flow. Decrease normal flow to save cost
+                arcs[arcIdx].flow -= flow;
+                arcs[arcIdx].upperBound += flow;
+                residualArcs[arcIdx].flow += flow;
+                residualArcs[arcIdx].upperBound -= flow;
+            }
+
+            length[arcs[arcIdx].to] = length[arcs[arcIdx].from] + arcs[arcIdx].cost;
+        }
+        return;
+    }
+
+    for (int i = 0; i < nodes[nodeIdx].outArcsCount; i++) {
+        long arcIdx = nodes[nodeIdx].outArcs[i];
+        // check that arc is not in path list
+        bool inPath = false;
+        for (int i = 0; i < pathLength; i++) {
+            if ((path[i] == arcIdx) || (path[i] == -arcIdx)){
+                inPath = true;
+                break;
+            }
+        }
+        if (inPath) {
+            continue;
+        }
+
+        if (arcs[arcIdx].upperBound > 0) {
+            long idx = arcs[arcIdx].to;
+            path[pathLength] = arcIdx;
+            flowDeepthSearch(nodes, arcs, residualArcs, nodeCount, arcCount, idx, path, pathLength+1, length);
+        }
+    }
+    for (int i = 0; i < nodes[nodeIdx].inArcsCount; i++) {
+        // check that arc is not in path list
+        long arcIdx = nodes[nodeIdx].inArcs[i];
+        // check that arc is not in path list
+        bool inPath = false;
+        for (int i = 0; i < pathLength; i++) {
+            if ((path[i] == arcIdx) || (path[i] == -arcIdx)){
+                inPath = true;
+                break;
+            }
+        }
+        if (inPath) {
+            continue;
+        }
+        if (residualArcs[arcIdx].upperBound > 0) {
+            long idx = residualArcs[arcIdx].to;
+            path[pathLength] = -arcIdx;
+            flowDeepthSearch(nodes, arcs, residualArcs, nodeCount, arcCount, idx, path, pathLength+1, length);
+        }
+    }
+}
+
+// solutino with negative cycle canceling
+int solveProblem1(node* nodes, arc* arcs, long nodeCount, long arcCount)
+{
+    arc* residualArcs = NULL;
+
+    // build residual network
+    if (buildResidualArcs(nodes, arcs, &residualArcs, nodeCount, arcCount)) {
+        printf("Could not build residual arcs\n");
+        return -1;
+    }
+
+    // find any max flow
+    long* path = malloc(nodeCount * sizeof(long));
+    for (int i = 0; i < nodeCount; i++) {
+        path[i] = -1;
+    }
+    long* length = malloc(nodeCount * sizeof(long));
+    length[0] = 0;
+    for (int i = 1; i < nodeCount; i++) {
+        length[i] = LONG_MAX;
+    }
+    flowDeepthSearch(nodes, arcs, residualArcs, nodeCount, arcCount, 0, path, 0, length);
+
+    bool interrupt = false;
+
+    // if we still can find better solution - proceed
+    interrupt = false;
+    while (!interrupt) {
+        // find negative cycless in network
+
+        // Bellman-Ford
+        bool relaxed = false;
+        long lastRelaxed = -1;
+        for (int i = 0; i < nodeCount; i++) {
+            relaxed = false;
+            for (int j = 0; j < arcCount; j++) {
+                if (length[arcs[j].from] == LONG_MAX) {
+                    // skip
+                    continue;
+                }
+                // check if we can use arc (residual capacity > 0)
+                if (arcs[j].upperBound > 0) {
+                    if (length[arcs[j].from] + arcs[j].cost < length[arcs[j].to] ) {
+                        // shortest path relax
+                        length[arcs[j].to] = length[arcs[j].from] + arcs[j].cost;
+                        path[arcs[j].to] = j;
+                        //minResidualCap[arcs[j].to] = lmin(minResidualCap[arcs[j].from], arcs[j].upperBound);
+                        relaxed = true;
+
+                        if (i == nodeCount-1) {
+                            lastRelaxed = arcs[j].to;
+                        }
+                    }
+                }
+                // check if we can use residual arc (residual capacity > 0)
+                if (residualArcs[j].upperBound > 0) {
+                    if (length[residualArcs[j].from] + residualArcs[j].cost < length[residualArcs[j].to] ) {
+                        // shortest path relax
+                        length[residualArcs[j].to] = length[residualArcs[j].from] + residualArcs[j].cost;
+                        path[residualArcs[j].to] = -j;
+                        //minResidualCap[residualArcs[j].to] = lmin(minResidualCap[residualArcs[j].from], residualArcs[j].upperBound);
+                        relaxed = true;
+
+                        if (i == nodeCount-1) {
+                            lastRelaxed = arcs[j].to;
+                        }
+                    }
+                }
+            }
+            if (!relaxed) {
+                break;
+            }
+        }
+
+        // if we have not found any negative cycle - exit
+        if (lastRelaxed == -1) {
+            interrupt = true;
+            continue;
+        }
+
+        // find node that is guaranteed to be on negative cycle
+        // for that - go N times back from lastRelaxed node
+        for (int i = 0; i < nodeCount; i++) {
+            long arcIdx = path[lastRelaxed];
+            if (arcIdx > 0) {
+                lastRelaxed = arcs[arcIdx].from;
+            }
+            if (arcIdx < 0) {
+                arcIdx *= -1;
+                lastRelaxed = residualArcs[arcIdx].from;
+            }
+        }
+
+        // now lastRelaxed is index of some node guaranteed to be on negaive cycle
+        // reconstruct this negative cycle by going backwards until reaching lastRelaxed again
+        long* cyclePath = malloc(nodeCount * sizeof(long));
+        long cycleLength = 0;
+
+        long prevIdx = lastRelaxed;
+        long minResidualCap = LONG_MAX;
+        do {
+            long arcIdx = path[prevIdx];
+
+            cyclePath[cycleLength] = arcIdx;
+            cycleLength++;
+
+            if (arcIdx > 0) {
+                prevIdx = arcs[arcIdx].from;
+                minResidualCap = lmin(minResidualCap, arcs[arcIdx].upperBound);
+            }
+            if (arcIdx < 0) {
+                arcIdx *= -1;
+                prevIdx = residualArcs[arcIdx].from;
+                minResidualCap = lmin(minResidualCap, residualArcs[arcIdx].upperBound);
+            }
+        } while (prevIdx != lastRelaxed);
+
+        // now we have negative cost cycle and minimum residual capacity on it
+        // modify flow value on this cycle
+        for (int i = 0; i < cycleLength; i++) {
+            long arcIdx = cyclePath[i];
+            if (arcIdx > 0) {
+                // normal flow. Increase normal flow
+                arcs[arcIdx].flow += minResidualCap;
+                arcs[arcIdx].upperBound -= minResidualCap;
+                residualArcs[arcIdx].flow -= minResidualCap;
+                residualArcs[arcIdx].upperBound += minResidualCap;
+            }
+            if (arcIdx < 0) {
+                // reverse flow. Decrease normal flow to save cost
+                arcIdx*=-1;
+                arcs[arcIdx].flow -= minResidualCap;
+                arcs[arcIdx].upperBound += minResidualCap;
+                residualArcs[arcIdx].flow += minResidualCap;
+                residualArcs[arcIdx].upperBound -= minResidualCap;
+            }
+        }
+    }
+
+    return 0;
+}
+
 int unnormolizeProblem(node* nodes, arc* arcs, long nodeCount, long arcCount, long* deltas)
 {
-    for (int i = 0; i < arcCount; i++) {
+    for (int i = 1; i < arcCount; i++) {
         arcs[i].flow += deltas[i];
     }
 
@@ -403,7 +636,7 @@ int unnormolizeProblem(node* nodes, arc* arcs, long nodeCount, long arcCount, lo
 int printSolution(node* nodes, arc* arcs, long nodeCount, long arcCount)
 {
     long long sol = 0;
-    for (int i = 0; i < arcCount; i++) {
+    for (int i = 1; i < arcCount; i++) {
         sol += arcs[i].flow * arcs[i].cost;
         printf("a %ld %ld %ld\n", arcs[i].from, arcs[i].to, arcs[i].flow);
     }
@@ -447,10 +680,15 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    if (solveProblem(nodes, arcs, nodesCount, arcsCount)) {
+    if (solveProblem1(nodes, arcs, nodesCount, arcsCount)) {
         printf("Could not solve problem\n");
         return -1;
     }
+
+    //if (printSolution(nodes, arcs, nodesCount, arcsCount)) {
+    //    printf("Could not print solution\n");
+    //    return -1;
+    //}
 
     if (unnormolizeProblem(nodes, arcs, nodesCount, originalArcsCount, deltas)) {
         printf("Could not unnormolize problem\n");
